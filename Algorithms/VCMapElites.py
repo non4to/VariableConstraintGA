@@ -127,9 +127,6 @@ class VariableConstraintMapElites(VariableConstraintGA):
                 self.bins[worst_row][worst_col] = self.bins[worst_row][worst_col][:-1]
                 self.num_infeasible -= 1 
 
-
-
-
     def place_in_bin(self, ind, infeasible_pop):
         # determine if feasible (from static constraints)
         fes = True 
