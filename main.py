@@ -1,9 +1,13 @@
 from GeneticAlgorithmInterface import VariableConstraintGA 
 from parameters import Parameters
-import numpy as np, random as rd, time
+import numpy as np, random as rd, time, os, shutil
+from datetime import datetime
+from multiprocessing import Pool
 ####
 from ProblemSpaceInterface import ProblemSpace 
 from ProblemSpaces.LodeRunner.LodeRunnerProblemSpace import LodRunnerProblemSpace
+from ProblemSpaces.LogicPuzzles.LogicPuzzleSpace import LogicPuzzleSpace
+# from ProblemSpaces.TravelingThief.TTP_ProblemSpace import TTPProblemSpace
 from Personas.Exploratory import ExploratoryUser
 
 class YouAlgorithm(VariableConstraintGA):
@@ -13,6 +17,17 @@ class YouAlgorithm(VariableConstraintGA):
         self.currentGrid = self.build_random_grid()
         self.qualityBins = [[] for _ in range(self.problem_space.get_num_bins())]
         self.maxBinSize = 10#int(self.max_memory / self.problem_space.get_num_bins())
+        self.currentGen = 0
+
+        ##### ERASE THESE LATER
+        self.execFolder = self.parameter.execFolder
+        shutil.copy("parameters.py", self.execFolder)
+        self.outputCSV = f"{self.execFolder}/data.csv"
+        with open(self.outputCSV, mode='a', encoding='utf-8') as f:
+            f.write("generation, x, y, fitness\n")
+        self.binsCSV = f"{self.execFolder}/bins.csv"
+        with open(self.binsCSV, mode='a', encoding='utf-8') as f:
+            f.write("gen, bins\n")
 
     def print_bins(self) -> None:
         for i, bin in enumerate(self.qualityBins):
@@ -71,7 +86,7 @@ class YouAlgorithm(VariableConstraintGA):
 
     def select_parent2_random(self, neighbors:list[tuple[int, int]]) -> tuple[int, int]:
         """Returns a random neighbor position from the list"""
-        return rd.choice(neighbors)
+        return self.parameter.random.choice(neighbors)
 
     def check_constraints(self, solution: object) -> bool:
         """Returns true if solution satisfied all current constraints"""
@@ -100,7 +115,9 @@ class YouAlgorithm(VariableConstraintGA):
             for x in range(len(self.currentGrid[y])):
                 fit, solution = self.currentGrid[y][x]
                 if self.check_constraints(solution):
-                    self.put_in_bin_v0(fit, solution)     
+                    self.put_in_bin_v0(fit, solution)   
+
+        self.save_current_grid(0)  
 
         # self.population_size # the max number of individuals you can generate per generation 
         # self.max_memory # the max number of individuals you can store at any time (always > then pop size)
@@ -134,6 +151,7 @@ class YouAlgorithm(VariableConstraintGA):
         EX: [[(fit1, obj1)], [], [(fit2, obj2), (fit3, obj3)], .... ] 
         
         """
+        self.currentGen += 1
         started = time.perf_counter()
         newGrid = {}
         fitnessList = []
@@ -143,7 +161,7 @@ class YouAlgorithm(VariableConstraintGA):
                 chosenOne = (-1, -1)
                 parent1Fit, parent1 = self.currentGrid[y][x]
 
-                if rd.random() >= self.cross_over_rate:
+                if self.parameter.random.random() <= self.cross_over_rate:
                     #crossover, need second parent -> mutates children
                     neighbors = self.get_neighbors(pos=(x,y), useToroid=self.parameter.toroidal)
                     parent2X, parent2Y = self.select_parent2_random(neighbors=neighbors)
@@ -173,36 +191,97 @@ class YouAlgorithm(VariableConstraintGA):
                     newGrid[y][x] = chosenOne
                 else:
                     newGrid[y][x] = (parent1Fit, parent1)
+
         self.currentGrid = newGrid
         finished = time.perf_counter()
+        # print(f"Generation {self.currentGen} finished in {finished-started}")
         if (finished-started) > 30:
-            print(f"Warning! Generation finished in {finished-started}")
+            print(f"Warning! Generation {self.currentGen} finished in {finished-started}")
+        self.save_current_grid(self.currentGen)
+        self.save_bins_state(self.currentGen)
         return self.qualityBins
 
-    def save_current_grid(gen:int, outputPath:str="results") -> None:
-        if outputPath is None:
-            outputPath = os.path.join(self._expFolder, "generations")
-            if not os.path.exists(outputPath):
-                os.makedirs(outputPath)
+    def save_current_grid(self, gen:int) -> None:
+        with open(self.outputCSV, mode='a', encoding='utf-8') as f:
+            for y in self.currentGrid:
+                for x in self.currentGrid[y]:
+                    fit, solution = self.currentGrid[y][x]
+                    f.write(f"{gen}, {x},{y}, {fit}\n")
+
+    def save_bins_state(self, gen:int) -> None:
+        output = f"Generation: {gen},"
+        for i, bin in enumerate(self.qualityBins):
+            output += f"Bin{i}:"
+            for fit, _ in bin:
+                output += f" {fit},"
+        with open(self.binsCSV, mode='a', encoding='utf-8') as f:
+            f.write(output)
+
+
+def exec_wrapper(expFolder:str, seed: int) -> dict:
+    import random
+    import numpy as np
+    
+    start_time = time.time()
+
+    try:
+        #problem space
+        problem_space = LogicPuzzleSpace()
+
+        #general parameters
+        user = ExploratoryUser(problem_space)
+        number_generation = 300 
+        population_size = 200
+        max_memory = 500 
+        cross_over = 1 
+        mutation = 0.05
+        update_interval = 50
+
+
+        #################################
+        PARAMS = Parameters(seed=seed)
+        #execution place
+        now = datetime.now().strftime("%d-%m-%Y---%H-%M-%S")
+        execFolder = f"{expFolder}/seed{PARAMS.seed}"
+        os.makedirs(execFolder)
+        PARAMS.execFolder = execFolder
+        algo = YouAlgorithm(PARAMS, problem_space, number_generation, population_size, max_memory, cross_over, mutation, user, update_interval)
+        algo.run()
+        print("Average QD score: {}".format(algo.get_avg_qd_score()))
+        algo.save_measure_history(f"{algo.execFolder}/test_data")
+        duration = time.time() - start_time
+        return {"success": True, "seed": seed, "duration": duration}
+    
+    except Exception as e:
+        duration = time.time() - start_time
+        return {"success": False, "seed": seed, "duration": duration, "error": str(e)}
 
 
 if __name__ == "__main__":
-    PARAMS = Parameters()
-    problem_space = LodRunnerProblemSpace()
-    user = ExploratoryUser(problem_space)
-    number_generation = 300 
-    population_size = 200
-    max_memory = 500 
-    cross_over = 1 
-    mutation = 0.05
-    update_interval = 50
-    algo = YouAlgorithm(PARAMS, problem_space, number_generation, population_size, max_memory, cross_over, mutation, user, update_interval)
-    algo.set_up()
-    for i in range(1,301):
-        algo.run_one_generation(False)
-        if (i%100==0) or (i==300):
-            print(f"Generation {i}")
-            algo.print_grid()
-            algo.print_bins()
-    # n = algo.get_neighbors((3,3),False)
-    # print(algo.select_parent2_random(n))
+# 2. Definir a lista de tarefas (ex: diferentes sementes ou repetições)
+    seeds = [124,4135,151256,631346,4515,131,51,6351,25,361]
+    maxProcessors = 10 
+
+    now = datetime.now().strftime("%d-%m-%Y---%H-%M-%S")
+    expFolder = f"results/{now}"
+    os.makedirs(expFolder)
+
+    progressFilePath = f"{expFolder}/experiment_progress.txt"
+    experimentStart = time.time()
+
+    print(f"Started with {maxProcessors} processors...")
+
+    allExecs = []
+    for seed in seeds:
+        allExecs.append((expFolder, seed))
+
+    with Pool(processes=maxProcessors) as p:
+        for result in p.imap_unordered(exec_wrapper, allExecs):
+            status = "SUCCESS" if result["success"] else "FAILED"
+            seed = result["seed"]
+            duration = f"{result['duration']:.2f}s"
+            elapsed = f"{time.time() - experimentStart:.2f}s"
+            line = f"[{status}] Seed {seed} finished in {duration}; {elapsed} elapsed since start\n"
+            print(line.strip())
+            with open(progressFilePath, "a", encoding="utf-8") as f:
+                f.write(line)
