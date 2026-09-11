@@ -1,0 +1,20 @@
+gen, bins
+
+Generation: 1,
+--Bin0:
+--Bin1: 10,
+--Bin2: 10,
+--Bin3:
+--Bin4:
+--Bin5:
+--Bin6:
+--Bin7:
+Generation: 2,
+--Bin0: 8,
+--Bin1: 11, 11, 11, 10, 10,
+--Bin2: 11, 11, 11, 11, 11,
+--Bin3:
+--Bin4:
+--Bin5:
+--Bin6:
+--Bin7:

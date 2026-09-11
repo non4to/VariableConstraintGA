@@ -79,7 +79,7 @@ def exec_wrapper(args: tuple) -> dict:
         population_size = 200
         max_memory = 500
         cross_over = 1
-        mutation = 0.05
+        mutation = 0.10
         update_interval = 50
 
         PARAMS = Parameters(seed=seed)
@@ -93,51 +93,60 @@ def exec_wrapper(args: tuple) -> dict:
             exec_folder=execFolder,
         )
         algo.run()
-        print("Average QD score: {}".format(algo.get_avg_qd_score()))
+        # print("Average QD score: {}".format(algo.get_avg_qd_score()))
         algo.save_measure_history(f"{execFolder}/measureData.json")
 
         duration = time.time() - start_time
-        return {"success": True, "seed": seed, "duration": duration}
+        return {"success": True, "seed": seed, "duration": duration, "avgQDscore":algo.get_avg_qd_score()}
 
     except Exception as e:
         import traceback
         duration = time.time() - start_time
         tb = traceback.format_exc()
-        return {"success": False, "seed": seed, "duration": duration, "error": str(e), "traceback": tb}
+        return {"success": False, "seed": seed, "duration": duration, "error": str(e), "traceback": tb, "avgQDscore":-1}
 
 
 if __name__ == "__main__":
-    expFolder = f"results/{datetime.now().strftime('%d-%m-%Y---%H-%M-%S')}"
+    # for i in range(2):
+    #     expFolder = f"results/{datetime.now().strftime('%d-%m-%Y---%H-%M-%S')}"
+    #     os.makedirs(expFolder)
+    #     result = exec_wrapper((expFolder, 11))
+    #     print(result)
+
+
+    seeds = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
+    maxProcessors = 10
+
+    now = datetime.now().strftime("%d-%m-%Y---%H-%M-%S")
+    expFolder = f"results/{now}"
     os.makedirs(expFolder)
-    result = exec_wrapper((expFolder, 11))
-    print(result)
 
+    progressFilePath = f"{expFolder}/experiment_progress.txt"
+    experimentStart = time.time()
 
-    # seeds = [11]#,22,33,44,55,66,77,88,99,1010,1111,1212,1313,1414,1515]
-    # maxProcessors = 10
+    print(f"[{now}] Started with {maxProcessors} processors...")
 
-    # now = datetime.now().strftime("%d-%m-%Y---%H-%M-%S")
-    # expFolder = f"results/{now}"
-    # os.makedirs(expFolder)
+    allExecs = [(expFolder, seed) for seed in seeds]
+    QDscores = []
+    seeds = []
 
-    # progressFilePath = f"{expFolder}/experiment_progress.txt"
-    # experimentStart = time.time()
-
-    # print(f"[{now}] Started with {maxProcessors} processors...")
-
-    # allExecs = [(expFolder, seed) for seed in seeds]
-
-    # with Pool(processes=maxProcessors) as p:
-    #     for result in p.imap_unordered(exec_wrapper, allExecs):
-    #         status = "SUCCESS" if result["success"] else "FAILED"
-    #         seed = result["seed"]
-    #         duration = f"{result['duration']:.2f}s"
-    #         elapsed = f"{time.time() - experimentStart:.2f}s"
-    #         line = f"[{status}] Seed {seed} finished in {duration}; {elapsed} elapsed since start\n"
-    #         print(line.strip())
-    #         if not result["success"]:
-    #             print(result["traceback"])
-    #         with open(progressFilePath, "a", encoding="utf-8") as f:
-    #             f.write(line)
-    #             if not result["success"]:
-    #                 f.write(result["traceback"] + "\n")
+    with Pool(processes=maxProcessors) as p:
+        for result in p.imap_unordered(exec_wrapper, allExecs):
+            QDscores.append(result["avgQDscore"])
+            status = "SUCCESS" if result["success"] else "FAILED"
+            seed = result["seed"]
+            seeds.append(seed)
+            duration = f"{result['duration']:.2f}s"
+            elapsed = f"{time.time() - experimentStart:.2f}s"
+            line = f"[{status}] Seed {seed} finished in {duration}; {elapsed} elapsed since start\n"
+            print(line.strip())
+            if not result["success"]:
+                print(result["traceback"])
+            with open(progressFilePath, "a", encoding="utf-8") as f:
+                f.write(line)
+                if not result["success"]:
+                    f.write(result["traceback"] + "\n")
+        with open(progressFilePath, "a", encoding="utf-8") as f:
+            f.write(f"Avg QD score of all executions: {sum(QDscores)/len(QDscores)}")
+            for i in range(seeds):
+                f.write(f"Avg QD score of seed {seeds[i]}: {QDscores[i]}")

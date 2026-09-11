@@ -70,8 +70,53 @@ class YouAlgorithm(VariableConstraintGA):
             for _, solution in binList:
                 if self.is_valid(solution):
                     fit = self.problem_space.fitness(solution)
+                    self.put_in_bin_v0(fit, solution)
+
+    def adapt(self) -> None:
+        self.reset_bins()
+        chosenOnes = []
+        for binList in self.qualityBins:
+            if len(binList) < 1: continue
+            for _, solution in binList:
+                chosenOnes.append(solution)
+
+        if len(chosenOnes) < 1: 
+            self.currentGrid = self.build_random_grid() 
+            for y in range(len(self.currentGrid)):
+                for x in range(len(self.currentGrid[y])):
+                    fit, solution = self.currentGrid[y][x]
                     if self.is_valid(solution):
                         self.put_in_bin_v0(fit, solution)
+
+        else:
+            newGrid = {}
+            for y in range(len(self.currentGrid)):
+                newGrid[y] = {}
+                for x in range(len(self.currentGrid[y])):
+                    chosenOne = (-1, -1)
+                    parent1 = self.parameter.random.choice(chosenOnes)
+
+                    if self.parameter.random.random() <= 0.25: #crossover parent1 with cell
+                        _, parent2 = self.currentGrid[y][x]
+                        children = self.problem_space.cross_over(parent1, parent2)
+                        for child in children:
+                            fit = self.problem_space.fitness(child)
+                            #check if its worth saving to bin
+                            if self.is_valid(child):
+                                self.put_in_bin_v0(fit, child)
+                            # only best child goes to the grid
+                            if fit >= chosenOne[0]:
+                                chosenOne = (fit, child)
+
+                    else: # no crossover, just mutate parent1
+                        mutated = self.problem_space.mutate(parent1, self.parameter.random.uniform(0.1, 0.5))
+                        fit = self.problem_space.fitness(mutated)
+                        chosenOne = (fit, mutated)
+                        #check if its worth saving to bin
+                        if self.is_valid(mutated):
+                            self.put_in_bin_v0(fit, mutated)
+                    newGrid[y][x] = chosenOne
+            self.currentGrid = newGrid
 
     def set_up(self):
         """"Fills the currentGrid with random solutions from the problem space"""
@@ -93,10 +138,10 @@ class YouAlgorithm(VariableConstraintGA):
 
         EX: [[(fit1, obj1)], [], [(fit2, obj2), (fit3, obj3)], .... ]
         """
-        if made_change:
-            self.reset_bins()
         self.currentGen += 1
         newGrid = {}
+        if made_change:
+            self.adapt()
         for y in range(len(self.currentGrid)):
             newGrid[y] = {}
             for x in range(len(self.currentGrid[y])):
