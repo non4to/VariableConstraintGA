@@ -1,19 +1,22 @@
 import os
 import shutil
 import time
+import statistics
+from collections import defaultdict
 from datetime import datetime
 from multiprocessing import Pool
-
 
 from parameters import Parameters
 from ProblemSpaces.LodeRunner.LodeRunnerProblemSpace import LodRunnerProblemSpace
 from ProblemSpaces.LogicPuzzles.LogicPuzzleSpace import LogicPuzzleSpace
-# from ProblemSpaces.TravelingThief.TTP_ProblemSpace import TTPProblemSpace
+from ProblemSpaces.TravelingThief.TTP_ProblemSpace import TTPProblemSpace
+
 from Personas.Exploratory import ExploratoryUser
 from Personas.DoNothing import DoNothing 
 from Personas.Strict import StrictUser 
 from Personas.Adaptive import AdaptiveUser
 from Personas.TwoForwardOneBack import TwoForOneBackUser
+
 from main import YouAlgorithm
 from Algorithms.VCMapElites import VariableConstraintMapElites
 
@@ -73,18 +76,18 @@ class Algo(YouAlgorithm):
         with open(self.binsCSV, mode='a', encoding='utf-8') as f:
             f.write(output)
 
-
 def exec_wrapper(args: tuple) -> dict:
-    expFolder, seed = args
+    expFolder, problemName, personaName, seed = args
     start_time = time.time()
 
     try:
-        problem_space = LogicPuzzleSpace()
-        user = ExploratoryUser  (problem_space)
+        problem_space = PROBLEMS[problemName]()
+        user = PERSONAS[personaName](problem_space)
 
         PARAMS = Parameters(seed=seed)
-        execFolder = f"{expFolder}/seed{PARAMS.seed}"
-        os.makedirs(execFolder)
+        execFolder = f"{expFolder}/{problemName}/{personaName}/seed{PARAMS.seed}"
+        os.makedirs(execFolder, exist_ok=True)
+        
         PARAMS.execFolder = execFolder
         number_generation = PARAMS.number_generation
         population_size = PARAMS.population_size
@@ -100,60 +103,117 @@ def exec_wrapper(args: tuple) -> dict:
         )
         
         algo.run()
-        # print("Average QD score: {}".format(algo.get_avg_qd_score()))
         algo.save_measure_history(f"{execFolder}/measureData.json")
 
         duration = time.time() - start_time
-        return {"success": True, "seed": seed, "duration": duration, "avgQDscore":algo.get_avg_qd_score()}
+        return {
+            "success": True, 
+            "problemName": problemName,
+            "personaName": personaName,
+            "seed": seed, 
+            "duration": duration, 
+            "avgQDscore": algo.get_avg_qd_score()
+        }
 
     except Exception as e:
         import traceback
         duration = time.time() - start_time
         tb = traceback.format_exc()
-        return {"success": False, "seed": seed, "duration": duration, "error": str(e), "traceback": tb, "avgQDscore":-1}
+        return {
+            "success": False, 
+            "problemName": problemName,
+            "personaName": personaName,
+            "seed": seed, 
+            "duration": duration, 
+            "error": str(e), 
+            "traceback": tb, 
+            "avgQDscore": -1
+        }
 
+def run_batch(execList:list, processors:int):
+        if not execList: return
+        print(f"\n--- Rodando {len(execList)} tarefas em ({processors} processador(es)) ---")
+        with Pool(processes=processors) as p:
+            for result in p.imap_unordered(exec_wrapper, execList):
+                status = "SUCCESS" if result["success"] else "FAILED"
+                prob = result["problemName"]
+                pers = result["personaName"]
+                seed = result["seed"]
+                duration = f"{result['duration']:.2f}s"
+                elapsed = f"{time.time() - experimentStart:.2f}s"
+                
+                line = f"[{status}] {prob} | {pers} | Seed {seed} em {duration}; Total: {elapsed}\n"
+                print(line.strip())
+                resultSummary.append(result)
+                with open(progressFilePath, "a", encoding="utf-8") as f:
+                    f.write(line)
+                    if not result["success"]:
+                        f.write(result["traceback"] + "\n")
 
 if __name__ == "__main__":
-    # for i in range(2):
-    #     expFolder = f"results/{datetime.now().strftime('%d-%m-%Y---%H-%M-%S')}"
-    #     os.makedirs(expFolder)
-    #     result = exec_wrapper((expFolder, 11))
-    #     print(result)
+    PROBLEMS = {
+    "LodeRunner": LodRunnerProblemSpace,
+    "LogicPuzzle": LogicPuzzleSpace,
+    "TTP": TTPProblemSpace
+    }
 
+    PERSONAS = {
+        "Exploratory": ExploratoryUser,
+        "DoNothing": DoNothing,
+        "Strict": StrictUser,
+        "Adaptive": AdaptiveUser,
+        "TwoForwardOneBack": TwoForOneBackUser
+    }
 
-    seeds = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
-    maxProcessors = 14
-
+    SEEDS = [1,2,3,4,5]
+    maxProcessors = 14  
     now = datetime.now().strftime("%d-%m-%Y---%H-%M-%S")
     expFolder = f"results/{now}"
-    os.makedirs(expFolder)
+    os.makedirs(expFolder, exist_ok=True)
 
     progressFilePath = f"{expFolder}/experiment_progress.txt"
     experimentStart = time.time()
 
-    print(f"[{now}] Started with {maxProcessors} processors...")
+    allExecs = []
+    for problemName in PROBLEMS.keys():
+        for personaName in PERSONAS.keys():
+            for seed in SEEDS:
+                allExecs.append((expFolder, problemName, personaName, seed))
 
-    allExecs = [(expFolder, seed) for seed in seeds]
-    QDscores = []
-    seeds = []
+    ttpExecs = [e for e in allExecs if e[1] == "TTP"]
+    otherExecs = [e for e in allExecs if e[1] != "TTP"]
 
-    with Pool(processes=maxProcessors) as p:
-        for result in p.imap_unordered(exec_wrapper, allExecs):
-            QDscores.append(result["avgQDscore"])
-            status = "SUCCESS" if result["success"] else "FAILED"
-            seed = result["seed"]
-            seeds.append(seed)
-            duration = f"{result['duration']:.2f}s"
-            elapsed = f"{time.time() - experimentStart:.2f}s"
-            line = f"[{status}] Seed {seed} finished in {duration}; {elapsed} elapsed since start\n"
+    print(f"[{now}] Iniciando {len(allExecs)} experimentos ({len(PROBLEMS)} problemas x {len(PERSONAS)} personas x {len(SEEDS)} seeds)...")
+    print(f"Usando {maxProcessors} processos em paralelo.")
+    resultSummary = []
+
+    #parellelize everything that is not TTP
+    run_batch(otherExecs, maxProcessors)
+    run_batch(ttpExecs, 1) #TTP is not paralelized
+
+    # Results stuff
+    scoresGrouped = defaultdict(list)
+    for res in resultSummary:
+        if res["success"]:
+            scoresGrouped[(res["problemName"], res["personaName"])].append(res["avgQDscore"])
+
+    header1 = "\n=== SUMMARY PER SEED ===\n"
+    print(header1.strip())
+    with open(progressFilePath, "a", encoding="utf-8") as f:
+        f.write(header1)
+        for res in resultSummary:
+            line = f"{res['problemName']} | {res['personaName']} | Seed {res['seed']} -> QD Score: {res['avgQDscore']:.4f}\n"
+            f.write(line)
+
+    header2 = "\n=== FULL RUN SUMMARY ===\n"
+    print(header2.strip())
+
+    with open(progressFilePath, "a", encoding="utf-8") as f:
+        f.write(header2)
+        for (prob, pers), scores in scoresGrouped.items():
+            meanValue = statistics.mean(scores)
+            stdValue = statistics.stdev(scores) if len(scores) > 1 else 0.0
+            
+            line = f"{prob} | {pers} -> Avg: {meanValue:.4f} | Std.Dev: {stdValue:.4f} (N={len(scores)})\n"
             print(line.strip())
-            if not result["success"]:
-                print(result["traceback"])
-            with open(progressFilePath, "a", encoding="utf-8") as f:
-                f.write(line)
-                if not result["success"]:
-                    f.write(result["traceback"] + "\n")
-        with open(progressFilePath, "a", encoding="utf-8") as f:
-            f.write(f"Avg QD score of all executions: {sum(QDscores)/len(QDscores)}")
-            for i in range(len(seeds)):
-                f.write(f"\nAvg QD score of seed {seeds[i]}: {QDscores[i]}")
+            f.write(line)

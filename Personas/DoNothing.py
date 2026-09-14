@@ -13,4 +13,4 @@ class DoNothing(User):
         self.problem_space = problem_space
     
     def update_constraints(self, cur_constraints, feasible):
-        return cur_constraints , False , False 
+        return cur_constraints , False
