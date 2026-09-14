@@ -39,11 +39,11 @@ PARAMETERS = {
     "selectionFunc": individual_selection_v0,
     "parentSelec": select_parent2_random,
     "tolerance": 0.5,
-    "number_generation":5,
+    "number_generation":300,
     "max_memory":500,
     "cross_over":0.5,
     "mutation":0.1,
-    "update_interval":2
+    "update_interval":50
 }
 PARAMETERS["population_size"] = sum(len(line) for line in PARAMETERS["grid"])
 
