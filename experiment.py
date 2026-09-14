@@ -4,12 +4,18 @@ import time
 from datetime import datetime
 from multiprocessing import Pool
 
+
 from parameters import Parameters
 from ProblemSpaces.LodeRunner.LodeRunnerProblemSpace import LodRunnerProblemSpace
 from ProblemSpaces.LogicPuzzles.LogicPuzzleSpace import LogicPuzzleSpace
 # from ProblemSpaces.TravelingThief.TTP_ProblemSpace import TTPProblemSpace
 from Personas.Exploratory import ExploratoryUser
+from Personas.DoNothing import DoNothing 
+from Personas.Strict import StrictUser 
+from Personas.Adaptive import AdaptiveUser
+from Personas.TwoForwardOneBack import TwoForOneBackUser
 from main import YouAlgorithm
+from Algorithms.VCMapElites import VariableConstraintMapElites
 
 class Algo(YouAlgorithm):
     """Subclass just for tests: adds saves in grid and bins in CSVs each gen"""
@@ -22,7 +28,7 @@ class Algo(YouAlgorithm):
 
         self.outputCSV = f"{self.execFolder}/data.csv"
         with open(self.outputCSV, mode='a', encoding='utf-8') as f:
-            f.write("generation, x, y, fitness\n")
+            f.write("id, generation, x, y, isValid, fit, bin\n")
 
         self.binsCSV = f"{self.execFolder}/bins.csv"
         with open(self.binsCSV, mode='a', encoding='utf-8') as f:
@@ -55,15 +61,15 @@ class Algo(YouAlgorithm):
         with open(self.outputCSV, mode='a', encoding='utf-8') as f:
             for y in self.currentGrid:
                 for x in self.currentGrid[y]:
-                    fit, solution = self.currentGrid[y][x]
-                    f.write(f"{gen}, {x},{y}, {fit}\n")
+                    solution = self.currentGrid[y][x]
+                    f.write(f"{solution.id}, {gen}, {x},{y}, {solution.valid}, {solution.fit}, {solution.currentBin}\n")
 
     def save_bins_state(self, gen: int) -> None:
         output = f"\nGeneration: {gen},"
         for i, bin in enumerate(self.qualityBins):
             output += f"\n--Bin{i}:"
-            for fit, _ in bin:
-                output += f" {fit},"
+            for solution in bin:
+                output += f" {solution.fit},"
         with open(self.binsCSV, mode='a', encoding='utf-8') as f:
             f.write(output)
 
@@ -74,24 +80,25 @@ def exec_wrapper(args: tuple) -> dict:
 
     try:
         problem_space = LogicPuzzleSpace()
-        user = ExploratoryUser(problem_space)
-        number_generation = 300
-        population_size = 200
-        max_memory = 500
-        cross_over = 1
-        mutation = 0.10
-        update_interval = 50
+        user = ExploratoryUser  (problem_space)
 
         PARAMS = Parameters(seed=seed)
         execFolder = f"{expFolder}/seed{PARAMS.seed}"
         os.makedirs(execFolder)
         PARAMS.execFolder = execFolder
+        number_generation = PARAMS.number_generation
+        population_size = PARAMS.population_size
+        max_memory = PARAMS.max_memory
+        cross_over = PARAMS.cross_over
+        mutation = PARAMS.mutation
+        update_interval = PARAMS.update_interval
 
         algo = Algo(
             PARAMS, problem_space, number_generation, population_size, max_memory,
             cross_over, mutation, user, update_interval,
             exec_folder=execFolder,
         )
+        
         algo.run()
         # print("Average QD score: {}".format(algo.get_avg_qd_score()))
         algo.save_measure_history(f"{execFolder}/measureData.json")
@@ -115,7 +122,7 @@ if __name__ == "__main__":
 
 
     seeds = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
-    maxProcessors = 10
+    maxProcessors = 14
 
     now = datetime.now().strftime("%d-%m-%Y---%H-%M-%S")
     expFolder = f"results/{now}"
@@ -148,5 +155,5 @@ if __name__ == "__main__":
                     f.write(result["traceback"] + "\n")
         with open(progressFilePath, "a", encoding="utf-8") as f:
             f.write(f"Avg QD score of all executions: {sum(QDscores)/len(QDscores)}")
-            for i in range(seeds):
-                f.write(f"Avg QD score of seed {seeds[i]}: {QDscores[i]}")
+            for i in range(len(seeds)):
+                f.write(f"\nAvg QD score of seed {seeds[i]}: {QDscores[i]}")

@@ -3,6 +3,26 @@ from parameters import Parameters
 from ProblemSpaceInterface import ProblemSpace
 import numpy as np, copy
 
+class Solution():
+    def __init__(self, id:int, bornInGen:int, solutionObject: object):
+        self.id = id
+        self.solutionObj = solutionObject
+        self.bornIn = bornInGen
+        self.fit = -1
+        self.currentBin = -1
+        self.age = 0
+        self.valid = False
+
+    def _update_fitness(self, problemSpace: object) -> float:
+        """updates and returns solution fitness value"""
+        self.fit = problemSpace.fitness(self.solutionObj)
+        return self.fit
+    
+    def _update_current_bin(self, problemSpace: object) -> int:
+        """updates and returns solutions bin index"""
+        self.currentBin = problemSpace.place_in_bin(self.solutionObj)
+        return self.currentBin
+
 class YouAlgorithm(VariableConstraintGA):
     def __init__(self, parameters: Parameters, problem_space: ProblemSpace, number_generations, population_size, max_memory, cross_over_rate, mutation_rate, user, update_interval):
         super().__init__(problem_space, number_generations, population_size, max_memory, cross_over_rate, mutation_rate, user, update_interval)
@@ -14,7 +34,29 @@ class YouAlgorithm(VariableConstraintGA):
         self.oldQBins = [[] for _ in range(self.problem_space.get_num_bins())]
         self.maxBinSize = 5
         self.currentGen = 0
+        self.solutionsNumber = 0
         self.currentGrid = self.build_random_grid()
+
+    def _create_solution(self, solutionObject: object) -> Solution:
+        """creates a solution"""
+        self.solutionsNumber += 1
+        solution = Solution(id=self.solutionsNumber, bornInGen=self.currentGen, solutionObject=solutionObject)
+        solution._update_fitness(self.problem_space)
+        solution._update_current_bin(self.problem_space)
+        return solution
+
+    def _crossover(self, parent1:Solution, parent2:Solution) -> list[Solution]:
+        """return two solutions, result of crossover between 2 other ones"""
+        childrenSolutionObjs = self.problem_space.cross_over(parent1.solutionObj, parent2.solutionObj)
+        output = []
+        for childSolutionObj in childrenSolutionObjs:
+            output.append(self._create_solution(childSolutionObj))
+        return output
+
+    def _mutation(self, toBeMutated:Solution, mutationRate:float) -> Solution:
+        """return solution after applying mutation rate to it"""
+        mutatedSolutionObj = self.problem_space.mutate(toBeMutated.solutionObj, mutationRate)
+        return self._create_solution(mutatedSolutionObj)
 
     def build_random_grid(self) -> dict:
         """Returns a grid with random individuals obtained from the given problem space.
@@ -24,9 +66,14 @@ class YouAlgorithm(VariableConstraintGA):
             grid[y] = {}
             for x in range(len(self.parameter.grid[y])):
                 solution = self.problem_space.generate_random_individual()
-                fit = self.problem_space.fitness(solution)
-                grid[y][x] = (fit, solution)
+                grid[y][x] = self._create_solution(solution)
         return grid
+
+    def _check_valid(self, solution: Solution) -> bool:
+        """returns true or false if a solution is valid. updates the parameter inside the solution too"""
+        output = self.is_valid(solution.solutionObj)
+        solution.valid = output
+        return output
 
     def get_neighbors(self, pos: tuple[int, int], useToroid: bool = False) -> list[tuple[int, int]]:
         """Returns a list of neighbors from given 'pos' considering toroidal or not
@@ -52,12 +99,12 @@ class YouAlgorithm(VariableConstraintGA):
                         output.append((neigh_x, neigh_y))
         return output
 
-    def put_in_bin_v0(self, fitness: float, solution: object) -> None:
+    def put_in_bin_v0(self, solution: Solution) -> None:
         """v0: Put a solution inside a bin if there's space and it performs better than the worst inside the bin
         This method doesn't verify the validity of solution."""
-        targetBin = self.problem_space.place_in_bin(solution)
-        self.qualityBins[targetBin].append((fitness, solution))
-        self.qualityBins[targetBin] = sorted(self.qualityBins[targetBin], key=lambda solution: solution[0], reverse=True)
+        targetBin = solution.currentBin
+        self.qualityBins[targetBin].append(solution)
+        self.qualityBins[targetBin] = sorted(self.qualityBins[targetBin], key=lambda solution: solution.fit, reverse=True)
         if (len(self.qualityBins[targetBin]) > self.maxBinSize):
             self.qualityBins[targetBin].pop()
 
@@ -67,56 +114,66 @@ class YouAlgorithm(VariableConstraintGA):
             binList.clear()
 
         for binList in self.oldQBins:
-            for _, solution in binList:
-                if self.is_valid(solution):
-                    fit = self.problem_space.fitness(solution)
-                    self.put_in_bin_v0(fit, solution)
+            for solution in binList:
+                solution._update_fitness(self.problem_space)
+                solution._update_current_bin(self.problem_space)
+                if self._check_valid(solution):
+                    self.put_in_bin_v0(solution)
 
     def adapt(self) -> None:
         self.reset_bins()
         chosenOnes = []
         for binList in self.qualityBins:
             if len(binList) < 1: continue
-            for _, solution in binList:
+            for solution in binList:
                 chosenOnes.append(solution)
 
         if len(chosenOnes) < 1: 
             self.currentGrid = self.build_random_grid() 
             for y in range(len(self.currentGrid)):
                 for x in range(len(self.currentGrid[y])):
-                    fit, solution = self.currentGrid[y][x]
-                    if self.is_valid(solution):
-                        self.put_in_bin_v0(fit, solution)
+                    solution = self.currentGrid[y][x]
+                    if self._check_valid(solution):
+                        self.put_in_bin_v0(solution)
 
         else:
+            #the idea here is to fill the grid with solutions that are either mutations of good ones of children (crossover of them)
             newGrid = {}
             for y in range(len(self.currentGrid)):
                 newGrid[y] = {}
                 for x in range(len(self.currentGrid[y])):
-                    chosenOne = (-1, -1)
                     parent1 = self.parameter.random.choice(chosenOnes)
+                    candidates = [parent1]
 
-                    if self.parameter.random.random() <= 0.25: #crossover parent1 with cell
-                        _, parent2 = self.currentGrid[y][x]
-                        children = self.problem_space.cross_over(parent1, parent2)
+                    if self.parameter.random.random() <= 0.5: #crossover parent1 with cell
+                        parent2 = self.currentGrid[y][x]
+                        children = self._crossover(parent1, parent2)
                         for child in children:
-                            fit = self.problem_space.fitness(child)
-                            #check if its worth saving to bin
-                            if self.is_valid(child):
-                                self.put_in_bin_v0(fit, child)
-                            # only best child goes to the grid
-                            if fit >= chosenOne[0]:
-                                chosenOne = (fit, child)
+                            candidates.append(child)
+                            if self._check_valid(child):
+                                self.put_in_bin_v0(child) 
 
                     else: # no crossover, just mutate parent1
-                        mutated = self.problem_space.mutate(parent1, self.parameter.random.uniform(0.1, 0.5))
-                        fit = self.problem_space.fitness(mutated)
-                        chosenOne = (fit, mutated)
+                        mutated = self._mutation(parent1, self.mutation_rate)
+                        candidates.append(mutated)
                         #check if its worth saving to bin
-                        if self.is_valid(mutated):
-                            self.put_in_bin_v0(fit, mutated)
+                        if self._check_valid(mutated):
+                            self.put_in_bin_v0(mutated)
+
+                    #the best stays in the grid
+                    chosenOne = self.selectionFunc(self.qualityBins, candidates, {"tolerance":self.tolerance})
                     newGrid[y][x] = chosenOne
             self.currentGrid = newGrid
+
+    def format_output(self) -> list[list[float, object]]:
+        """formats output to competition requirements. formats from qualityBins"""
+        output = []
+        for qBin in self.qualityBins:
+            thisBin = []
+            for solution in qBin:
+                thisBin.append((solution.fit, solution.solutionObj))
+            output.append(thisBin)
+        return output
 
     def set_up(self):
         """"Fills the currentGrid with random solutions from the problem space"""
@@ -124,9 +181,9 @@ class YouAlgorithm(VariableConstraintGA):
 
         for y in range(len(self.currentGrid)):
             for x in range(len(self.currentGrid[y])):
-                fit, solution = self.currentGrid[y][x]
-                if self.is_valid(solution):
-                    self.put_in_bin_v0(fit, solution)
+                solution = self.currentGrid[y][x]
+                if self._check_valid(solution):
+                    self.put_in_bin_v0(solution)
 
     def run_one_generation(self, made_change):
         """
@@ -145,38 +202,32 @@ class YouAlgorithm(VariableConstraintGA):
         for y in range(len(self.currentGrid)):
             newGrid[y] = {}
             for x in range(len(self.currentGrid[y])):
-                chosenOne = (-1, -1)
-                parent1Fit, parent1 = self.currentGrid[y][x]
+                parent1 = self.currentGrid[y][x]
+                candidates = [parent1]
 
                 if self.parameter.random.random() <= self.cross_over_rate:
                     # crossover, need second parent -> mutates children
                     neighbors = self.get_neighbors(pos=(x, y), useToroid=self.parameter.toroidal)
                     parent2X, parent2Y = self.parentSelectionFunc(self.parameter.random, neighbors, {})
-                    _, parent2 = self.currentGrid[parent2Y][parent2X]
-                    children = self.problem_space.cross_over(parent1, parent2)
+                    parent2 = self.currentGrid[parent2Y][parent2X]
+                    children = self._crossover(parent1, parent2)
                     for child in children:
-                        child = self.problem_space.mutate(child, self.mutation_rate)
-                        fit = self.problem_space.fitness(child)
+                        child = self._mutation(child, self.mutation_rate)
+                        candidates.append(child)
                         #check if its worth saving to bin
-                        if self.is_valid(child):
-                            self.put_in_bin_v0(fit, child)
-                        # only best child goes to the grid
-                        if fit >= chosenOne[0]:
-                            chosenOne = (fit, child)
+                        if self._check_valid(child):
+                            self.put_in_bin_v0(child) 
                 else:
                     # no crossover, just mutate
-                    mutated = self.problem_space.mutate(parent1, self.mutation_rate)
-                    fit = self.problem_space.fitness(mutated)
-                    chosenOne = (fit, mutated)
+                    mutated = self._mutation(parent1, self.mutation_rate) 
+                    candidates.append(mutated)
                     #check if its worth saving to bin
-                    if self.is_valid(mutated):
-                        self.put_in_bin_v0(fit, mutated)
+                    if self._check_valid(mutated):
+                        self.put_in_bin_v0(mutated)
 
-                candidates = [(parent1Fit  , parent1     , int(self.problem_space.place_in_bin(parent1))),
-                              (chosenOne[0], chosenOne[1], int(self.problem_space.place_in_bin(chosenOne[1])))]
                 #the best stays in the grid
-                chosenFit, chosenSolution = self.selectionFunc(self.qualityBins, candidates, {"tolerance":self.tolerance})
-                newGrid[y][x] = (chosenFit, chosenSolution)
+                chosenOne = self.selectionFunc(self.qualityBins, candidates, {"tolerance":self.tolerance})
+                newGrid[y][x] = chosenOne
 
         self.currentGrid = newGrid
-        return self.qualityBins
+        return self.format_output()
