@@ -45,8 +45,6 @@ class YouAlgorithm(VariableConstraintGA):
         solution = Solution(id=self.solutionsNumber, bornInGen=self.currentGen, solutionObject=solutionObject)
         solution._update_fitness(self.problem_space)
         solution._update_current_bin(self.problem_space)
-        if self._check_valid(solution):
-            self.put_in_bin_v0(solution) 
         return solution
 
     def _crossover(self, parent1:Solution, parent2:Solution) -> list[Solution]:
