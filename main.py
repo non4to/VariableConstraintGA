@@ -3,6 +3,8 @@ from parameters import Parameters
 from ProblemSpaceInterface import ProblemSpace
 import numpy as np, copy
 
+#DOESNT RESET THE WHOLE GRID WHEN NO BINS ARE DISCOVERED
+
 class Solution():
     def __init__(self, id:int, bornInGen:int, solutionObject: object):
         self.id = id
@@ -38,11 +40,13 @@ class YouAlgorithm(VariableConstraintGA):
         self.currentGrid = self.build_random_grid()
 
     def _create_solution(self, solutionObject: object) -> Solution:
-        """creates a solution"""
+        """creates a solution - everytime a solution is created, it is evaluated, its bin assigned and check if its valid to get into quality bin"""
         self.solutionsNumber += 1
         solution = Solution(id=self.solutionsNumber, bornInGen=self.currentGen, solutionObject=solutionObject)
         solution._update_fitness(self.problem_space)
         solution._update_current_bin(self.problem_space)
+        if self._check_valid(solution):
+            self.put_in_bin_v0(solution) 
         return solution
 
     def _crossover(self, parent1:Solution, parent2:Solution) -> list[Solution]:
@@ -69,6 +73,7 @@ class YouAlgorithm(VariableConstraintGA):
             for x in range(len(self.parameter.grid[y])):
                 solution = self.problem_space.generate_random_individual()
                 grid[y][x] = self._create_solution(solution)
+
         return grid
 
     def _check_valid(self, solution: Solution) -> bool:
@@ -131,10 +136,13 @@ class YouAlgorithm(VariableConstraintGA):
                 chosenOnes.append(solution)
 
         if len(chosenOnes) < 1: 
-            self.currentGrid = self.build_random_grid() 
+            #no bins filled! So just re-evaluated current solutions.
+            # self.currentGrid = self.build_random_grid() 
             for y in range(len(self.currentGrid)):
                 for x in range(len(self.currentGrid[y])):
                     solution = self.currentGrid[y][x]
+                    solution._update_fitness(self.problem_space)
+                    solution._update_current_bin(self.problem_space)
                     if self._check_valid(solution):
                         self.put_in_bin_v0(solution)
 

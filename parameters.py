@@ -1,5 +1,7 @@
 import numpy as np
 
+#NEW SELECTION, V1
+
 def individual_selection_v0(qualityBins:list ,solutions:list["Solution"], otherArgs:dict={}) -> "Solution":
     """Decides which individual from the list is selected to stay in the grid for the next generation.
     This function decides giving priority to solutions whose bins are not yet populated.
@@ -11,6 +13,19 @@ def individual_selection_v0(qualityBins:list ,solutions:list["Solution"], otherA
     for solution in solutions:
         if (len(qualityBins[solution.currentBin]) < 1) and (solution.fit >= solutions[0].fit*tolerance):
             #return solution if there is no solution in the solution's bin and solution fitness is a minimum of its pears. else, just returns the best
+            return solution
+    return solutions[0]
+
+def individual_selection_v1(qualityBins:list ,solutions:list["Solution"], otherArgs:dict={}) -> "Solution":
+    """Decides which individual from the list is selected to stay in the grid for the next generation.
+    This function decides giving priority to solutions that are valid and whose bins aare not yet populated.
+    It works with a given tolerance. The new-bin-solution has to be at least % of biggest solution of the list
+    Solutions: list of tuples (fitness, solution object, bin)
+    """
+    wasOnGrid = solutions[0]
+    solutions = sorted(solutions, key=lambda solution: solution.fit, reverse=True)
+    for solution in solutions:
+        if (solution.valid) and (len(qualityBins[solution.currentBin]) <= len(qualityBins[wasOnGrid.currentBin])):
             return solution
     return solutions[0]
 
