@@ -166,7 +166,7 @@ if __name__ == "__main__":
     }
 
     SEEDS = [1,2,3,4,5]
-    maxProcessors = 10  
+    maxProcessors = 14  
     now = datetime.now().strftime("%d-%m-%Y---%H-%M-%S")
     expFolder = f"results/{now}"
     os.makedirs(expFolder, exist_ok=True)

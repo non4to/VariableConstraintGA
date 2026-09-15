@@ -53,8 +53,10 @@ class YouAlgorithm(VariableConstraintGA):
             output.append(self._create_solution(childSolutionObj))
         return output
 
-    def _mutation(self, toBeMutated:Solution, mutationRate:float) -> Solution:
+    def _mutation(self, toBeMutated:Solution, mutationRate:float, pos:tuple[int,int]=[-1,-1]) -> Solution:
         """return solution after applying mutation rate to it"""
+        if self.parameter.useMutationGrid:
+            mutationRate = self.parameter.mutationGrid[pos[1]][pos[0]]
         mutatedSolutionObj = self.problem_space.mutate(toBeMutated.solutionObj, mutationRate)
         return self._create_solution(mutatedSolutionObj)
 
@@ -154,7 +156,7 @@ class YouAlgorithm(VariableConstraintGA):
                                 self.put_in_bin_v0(child) 
 
                     else: # no crossover, just mutate parent1
-                        mutated = self._mutation(parent1, self.mutation_rate)
+                        mutated = self._mutation(parent1, self.mutation_rate, (x,y))
                         candidates.append(mutated)
                         #check if its worth saving to bin
                         if self._check_valid(mutated):
@@ -212,14 +214,14 @@ class YouAlgorithm(VariableConstraintGA):
                     parent2 = self.currentGrid[parent2Y][parent2X]
                     children = self._crossover(parent1, parent2)
                     for child in children:
-                        child = self._mutation(child, self.mutation_rate)
+                        child = self._mutation(child, self.mutation_rate, (x,y))
                         candidates.append(child)
                         #check if its worth saving to bin
                         if self._check_valid(child):
                             self.put_in_bin_v0(child) 
                 else:
                     # no crossover, just mutate
-                    mutated = self._mutation(parent1, self.mutation_rate) 
+                    mutated = self._mutation(parent1, self.mutation_rate, (x,y)) 
                     candidates.append(mutated)
                     #check if its worth saving to bin
                     if self._check_valid(mutated):
