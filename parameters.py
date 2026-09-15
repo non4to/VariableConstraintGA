@@ -47,7 +47,7 @@ PARAMETERS = {
     [0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1] ,
     [0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5] 
     ],
-    "toroidal": False,
+    "toroidal": True,
     "selectionFunc": individual_selection_v0,
     "parentSelec": select_parent2_random,
     "tolerance": 0.5,
