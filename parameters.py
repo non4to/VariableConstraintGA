@@ -22,10 +22,17 @@ def individual_selection_v1(qualityBins:list ,solutions:list["Solution"], otherA
     It works with a given tolerance. The new-bin-solution has to be at least % of biggest solution of the list
     Solutions: list of tuples (fitness, solution object, bin)
     """
-    wasOnGrid = solutions[0]
     solutions = sorted(solutions, key=lambda solution: solution.fit, reverse=True)
+
+    mostEmptyBin = -1
+    leastSolutions = 999
+    for i, qBin in enumerate(qualityBins):
+        if len(qBin) < leastSolutions:
+            leastSolutions = len(qBin)
+            mostEmptyBin = i
+            
     for solution in solutions:
-        if (solution.valid) and (len(qualityBins[solution.currentBin]) <= len(qualityBins[wasOnGrid.currentBin])):
+        if (solution.valid) and (len(qualityBins[solution.currentBin]) < len(qualityBins[mostEmptyBin])):
             return solution
     return solutions[0]
 
@@ -62,13 +69,13 @@ PARAMETERS = {
     [0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1 ,0.1] ,
     [0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5 ,0.5] 
     ],
-    "toroidal": True,
-    "selectionFunc": individual_selection_v0,
+    "toroidal": False,
+    "selectionFunc": individual_selection_v1,
     "parentSelec": select_parent2_random,
     "tolerance": 0.5,
     "number_generation":300,
     "max_memory":500,
-    "cross_over":1,
+    "cross_over":0.5,
     "mutation":0.1,
     "update_interval":50,
     "useMutationGrid":True,
